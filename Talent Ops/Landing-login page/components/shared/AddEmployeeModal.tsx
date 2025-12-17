@@ -24,6 +24,9 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({ isOpen, onCl
         team_id: '',
         newTeamName: '',
         monthly_leave_quota: 3,
+        basic_salary: '',
+        hra: '',
+        allowances: '',
     });
     const [error, setError] = useState('');
 
@@ -108,6 +111,9 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({ isOpen, onCl
                         role: formData.role,
                         team_id: teamId || null,
                         monthly_leave_quota: formData.monthly_leave_quota,
+                        basic_salary: parseFloat(formData.basic_salary),
+                        hra: parseFloat(formData.hra),
+                        allowances: parseFloat(formData.allowances) || 0,
                     }),
                 }
             );
@@ -135,6 +141,9 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({ isOpen, onCl
                 team_id: '',
                 newTeamName: '',
                 monthly_leave_quota: 3,
+                basic_salary: '',
+                hra: '',
+                allowances: '',
             });
 
             onSuccess();
@@ -374,6 +383,88 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({ isOpen, onCl
                                     color: 'var(--text-primary)',
                                 }}
                             />
+                        </div>
+
+                        {/* Compensation Details Section */}
+                        <div style={{
+                            marginTop: 'var(--spacing-lg)',
+                            paddingTop: 'var(--spacing-lg)',
+                            borderTop: '2px solid var(--border)',
+                        }}>
+                            <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: 'var(--spacing-md)' }}>
+                                Compensation Details
+                            </h3>
+
+                            {/* Basic Salary */}
+                            <div style={{ marginBottom: 'var(--spacing-md)' }}>
+                                <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', fontWeight: 500 }}>
+                                    Basic Salary *
+                                </label>
+                                <input
+                                    type="number"
+                                    required
+                                    min={0}
+                                    step="0.01"
+                                    value={formData.basic_salary}
+                                    onChange={(e) => setFormData({ ...formData, basic_salary: e.target.value })}
+                                    placeholder="Enter basic salary"
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px',
+                                        borderRadius: '8px',
+                                        border: '1px solid var(--border)',
+                                        backgroundColor: 'var(--background)',
+                                        color: 'var(--text-primary)',
+                                    }}
+                                />
+                            </div>
+
+                            {/* HRA */}
+                            <div style={{ marginBottom: 'var(--spacing-md)' }}>
+                                <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', fontWeight: 500 }}>
+                                    HRA (House Rent Allowance) *
+                                </label>
+                                <input
+                                    type="number"
+                                    required
+                                    min={0}
+                                    step="0.01"
+                                    value={formData.hra}
+                                    onChange={(e) => setFormData({ ...formData, hra: e.target.value })}
+                                    placeholder="Enter HRA amount"
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px',
+                                        borderRadius: '8px',
+                                        border: '1px solid var(--border)',
+                                        backgroundColor: 'var(--background)',
+                                        color: 'var(--text-primary)',
+                                    }}
+                                />
+                            </div>
+
+                            {/* Allowances */}
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', fontWeight: 500 }}>
+                                    Other Allowances
+                                </label>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    step="0.01"
+                                    value={formData.allowances}
+                                    onChange={(e) => setFormData({ ...formData, allowances: e.target.value })}
+                                    placeholder="Enter other allowances (optional)"
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px',
+                                        borderRadius: '8px',
+                                        border: '1px solid var(--border)',
+                                        backgroundColor: 'var(--background)',
+                                        color: 'var(--text-primary)',
+                                    }}
+                                />
+                            </div>
                         </div>
 
                         {/* Error Message */}

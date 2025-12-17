@@ -11,6 +11,7 @@ import { AddEmployeeModal } from '../../shared/AddEmployeeModal';
 import { EditEmployeeModal } from '../../shared/EditEmployeeModal';
 import { supabase } from '../../../lib/supabaseClient';
 import PayslipsPage from '../../shared/PayslipsPage';
+import PayrollPage from '../../shared/PayrollPage';
 import AnnouncementsPage from '../../shared/AnnouncementsPage';
 import ProjectHierarchyDemo from '../../shared/ProjectHierarchyDemo';
 import InvoiceGenerator from '../components/Invoice/InvoiceGenerator';
@@ -40,6 +41,7 @@ const ModulePage = ({ title, type }) => {
     // State for Employee Details modal
     const [selectedEmployee, setSelectedEmployee] = useState(null);
     const [showEmployeeModal, setShowEmployeeModal] = useState(false);
+    const [employeeSalary, setEmployeeSalary] = useState(null);
 
     // State for Candidate Details modal
     const [selectedCandidate, setSelectedCandidate] = useState(null);
@@ -84,7 +86,10 @@ const ModulePage = ({ title, type }) => {
         dept: '',
         phone: '',
         location: '',
-        joinDate: new Date().toISOString().split('T')[0]
+        joinDate: new Date().toISOString().split('T')[0],
+        basic_salary: '',
+        hra: '',
+        allowances: '',
     });
 
     // Fetch employees from Supabase
@@ -332,6 +337,28 @@ const ModulePage = ({ title, type }) => {
         }
     };
 
+    const fetchEmployeeSalary = async (employeeId) => {
+        try {
+            const { data, error } = await supabase
+                .from('employee_finance')
+                .select('*')
+                .eq('employee_id', employeeId)
+                .eq('is_active', true)
+                .single();
+
+            if (error) {
+                console.log('No active salary record found:', error);
+                setEmployeeSalary(null);
+                return;
+            }
+
+            setEmployeeSalary(data);
+        } catch (error) {
+            console.error('Error fetching employee salary:', error);
+            setEmployeeSalary(null);
+        }
+    };
+
     const handleViewLeave = async (leaveRequest) => {
         setSelectedLeaveRequest(leaveRequest);
 
@@ -436,6 +463,8 @@ const ModulePage = ({ title, type }) => {
         } else if (action === 'View Employee') {
             setSelectedEmployee(item);
             setShowEmployeeModal(true);
+            // Fetch employee salary
+            fetchEmployeeSalary(item.id);
         } else if (action === 'Edit Employee') {
             setSelectedEmployeeForEdit(item);
             setShowEditEmployeeModal(true);
@@ -491,55 +520,79 @@ const ModulePage = ({ title, type }) => {
         e.preventDefault();
 
         try {
-            // 1. Create User in Supabase Auth
-            const { data: authData, error: authError } = await supabase.auth.signUp({
+            // Get the current session token
+            const { data: { session } } = await supabase.auth.getSession();
+
+            if (!session) {
+                throw new Error('You must be logged in to add employees');
+            }
+
+            // Call the Supabase Edge Function to add employee
+            console.log('Sending data to Edge Function:', {
+                full_name: addEmployeeFormData.name,
                 email: addEmployeeFormData.email,
-                password: addEmployeeFormData.password,
-                options: {
-                    data: {
-                        full_name: addEmployeeFormData.name,
-                        role: addEmployeeFormData.role,
-                    }
-                }
+                role: addEmployeeFormData.role.toLowerCase().replace(' ', '_'),
+                team_id: addEmployeeFormData.dept || null,
+                basic_salary: parseFloat(addEmployeeFormData.basic_salary),
+                hra: parseFloat(addEmployeeFormData.hra),
+                allowances: parseFloat(addEmployeeFormData.allowances) || 0,
             });
 
-            if (authError) throw authError;
-
-            if (authData.user) {
-                // 2. Insert into Profiles Table
-                const { error: profileError } = await supabase
-                    .from('profiles')
-                    .insert({
-                        id: authData.user.id,
+            const response = await fetch(
+                'https://ppptzmmecvjuvbulvddh.supabase.co/functions/v1/add-employee',
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${session.access_token}`,
+                    },
+                    body: JSON.stringify({
                         full_name: addEmployeeFormData.name,
                         email: addEmployeeFormData.email,
-                        role: addEmployeeFormData.role.toLowerCase().replace(' ', '_'), // standardized role
-                        team_id: addEmployeeFormData.dept || null, // Using dept field as team_id
-                        phone: addEmployeeFormData.phone || null,
-                        location: addEmployeeFormData.location || null,
-                        join_date: addEmployeeFormData.joinDate,
-                        created_at: new Date().toISOString()
-                    });
+                        password: addEmployeeFormData.password,
+                        role: addEmployeeFormData.role.toLowerCase().replace(' ', '_'),
+                        team_id: addEmployeeFormData.dept || null,
+                        monthly_leave_quota: 3,
+                        basic_salary: parseFloat(addEmployeeFormData.basic_salary),
+                        hra: parseFloat(addEmployeeFormData.hra),
+                        allowances: parseFloat(addEmployeeFormData.allowances) || 0,
+                    }),
+                }
+            );
 
-                if (profileError) throw profileError;
-
-                // 3. Update local state (Optimistic or fetch again)
-                // Trigger refresh or update list
-                setRefreshTrigger(prev => prev + 1);
-
-                setShowAddEmployeeModal(false);
-                setAddEmployeeFormData({
-                    name: '',
-                    email: '',
-                    password: '',
-                    role: '',
-                    dept: '',
-                    phone: '',
-                    location: '',
-                    joinDate: new Date().toISOString().split('T')[0]
-                });
-                addToast('Employee added successfully', 'success');
+            let result;
+            try {
+                result = await response.json();
+            } catch (jsonError) {
+                throw new Error(`Server error: ${response.status} ${response.statusText}`);
             }
+
+            console.log('Edge Function response:', result);
+
+            if (!response.ok) {
+                console.error('Edge Function error:', result);
+                throw new Error(result.error || result.message || `Server error: ${response.status}`);
+            }
+
+            // Trigger refresh to show new employee
+            setRefreshTrigger(prev => prev + 1);
+
+            // Reset form
+            setShowAddEmployeeModal(false);
+            setAddEmployeeFormData({
+                name: '',
+                email: '',
+                password: '',
+                role: '',
+                dept: '',
+                phone: '',
+                location: '',
+                joinDate: new Date().toISOString().split('T')[0],
+                basic_salary: '',
+                hra: '',
+                allowances: '',
+            });
+            addToast('Employee added successfully', 'success');
 
         } catch (error) {
             console.error('Error adding employee:', error);
@@ -578,6 +631,7 @@ const ModulePage = ({ title, type }) => {
     if (title === 'Settings') return <SettingsDemo />;
     if (title === 'Announcements') return <AnnouncementsPage userRole={userRole} userId={userId} />;
     if (type === 'payroll') return <PayslipsPage userRole={userRole} userId={userId} addToast={addToast} />;
+    if (type === 'payroll-generation') return <PayrollPage userRole={userRole} userId={userId} addToast={addToast} />;
     if (type === 'invoice') return <InvoiceGenerator />;
 
     // Mock Data Configurations
@@ -1116,8 +1170,61 @@ const ModulePage = ({ title, type }) => {
                                 </div>
                             </div>
 
+                            {/* Compensation Details - Role-based visibility */}
+                            {(userRole === 'executive' || userRole === 'manager') && employeeSalary && (
+                                <div style={{ marginTop: '32px', paddingTop: '32px', borderTop: '2px solid var(--border)' }}>
+                                    <h5 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '20px', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>Compensation Details</h5>
+
+                                    {/* Salary Breakdown */}
+                                    <div style={{ backgroundColor: '#fafafa', border: '1px solid #e5e7eb', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid #e5e7eb' }}>
+                                            <span style={{ fontSize: '0.95rem', color: '#6b7280', fontWeight: 500 }}>Basic Salary</span>
+                                            <span style={{ fontSize: '0.9rem', fontWeight: 500, color: '#111827' }}>₹{employeeSalary.basic_salary?.toLocaleString()}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid #e5e7eb' }}>
+                                            <span style={{ fontSize: '0.95rem', color: '#6b7280', fontWeight: 500 }}>House Rent Allowance</span>
+                                            <span style={{ fontSize: '0.9rem', fontWeight: 500, color: '#111827' }}>₹{employeeSalary.hra?.toLocaleString()}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '2px solid #e5e7eb' }}>
+                                            <span style={{ fontSize: '0.95rem', color: '#6b7280', fontWeight: 500 }}>Other Allowances</span>
+                                            <span style={{ fontSize: '0.9rem', fontWeight: 500, color: '#111827' }}>₹{employeeSalary.allowances?.toLocaleString() || '0'}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '24px', backgroundColor: '#f9fafb' }}>
+                                            <span style={{ fontSize: '1.05rem', color: '#111827', fontWeight: 700 }}>Total Monthly Compensation</span>
+                                            <span style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--primary)' }}>
+                                                ₹{((employeeSalary.basic_salary || 0) + (employeeSalary.hra || 0) + (employeeSalary.allowances || 0)).toLocaleString()}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Effective Dates */}
+                                    <div style={{ marginTop: '16px', padding: '12px 16px', backgroundColor: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <div>
+                                                <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '2px' }}>Effective From</p>
+                                                <p style={{ fontSize: '0.9rem', fontWeight: 600, color: '#111827' }}>
+                                                    {employeeSalary.effective_from ? new Date(employeeSalary.effective_from).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}
+                                                </p>
+                                            </div>
+                                            <div style={{ textAlign: 'right' }}>
+                                                <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '2px' }}>Effective To</p>
+                                                <p style={{ fontSize: '0.9rem', fontWeight: 600, color: '#111827' }}>
+                                                    {employeeSalary.effective_to ? new Date(employeeSalary.effective_to).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Present'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        {employeeSalary.change_reason && (
+                                            <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #e5e7eb' }}>
+                                                <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '2px' }}>Reason for Change</p>
+                                                <p style={{ fontSize: '0.85rem', fontWeight: 500, color: '#111827' }}>{employeeSalary.change_reason}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Performance Metrics */}
-                            <div>
+                            <div style={{ marginTop: '48px' }}>
                                 <h5 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '16px', color: 'var(--text-primary)' }}>Performance Metrics</h5>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
                                     <div style={{ padding: '16px', backgroundColor: '#dcfce7', borderRadius: '12px', textAlign: 'center' }}>
@@ -1420,6 +1527,53 @@ const ModulePage = ({ title, type }) => {
                                     style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '1rem', backgroundColor: 'var(--background)', color: 'var(--text-primary)' }}
                                     required
                                 />
+                            </div>
+
+                            {/* Compensation Details Section */}
+                            <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '2px solid var(--border)' }}>
+                                <h4 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '16px', color: 'var(--text-primary)' }}>Compensation Details</h4>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 500, marginBottom: '8px', color: 'var(--text-primary)' }}>Basic Salary *</label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            value={addEmployeeFormData.basic_salary}
+                                            onChange={(e) => setAddEmployeeFormData({ ...addEmployeeFormData, basic_salary: e.target.value })}
+                                            style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '1rem', backgroundColor: 'var(--background)', color: 'var(--text-primary)' }}
+                                            placeholder="Enter basic salary"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 500, marginBottom: '8px', color: 'var(--text-primary)' }}>HRA *</label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            value={addEmployeeFormData.hra}
+                                            onChange={(e) => setAddEmployeeFormData({ ...addEmployeeFormData, hra: e.target.value })}
+                                            style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '1rem', backgroundColor: 'var(--background)', color: 'var(--text-primary)' }}
+                                            placeholder="Enter HRA"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                <div style={{ marginTop: '16px' }}>
+                                    <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 500, marginBottom: '8px', color: 'var(--text-primary)' }}>Other Allowances</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={addEmployeeFormData.allowances}
+                                        onChange={(e) => setAddEmployeeFormData({ ...addEmployeeFormData, allowances: e.target.value })}
+                                        style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '1rem', backgroundColor: 'var(--background)', color: 'var(--text-primary)' }}
+                                        placeholder="Enter other allowances (optional)"
+                                    />
+                                </div>
                             </div>
 
                             <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>

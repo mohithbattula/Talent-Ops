@@ -1,23 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import { Download, FileText, Calendar, DollarSign, Plus, X, Upload } from 'lucide-react';
+import { Download, FileText, Calendar, DollarSign, Plus } from 'lucide-react';
 import DataTable from '../employee/components/UI/DataTable';
+import PayslipFormModal from '../../../../Payslips/src/components/PayslipFormModal';
 
 const PayslipsPage = ({ userRole, userId, addToast }) => {
     const [payslips, setPayslips] = useState([]);
     const [loading, setLoading] = useState(true);
-
-    // Add Modal State
     const [showAddModal, setShowAddModal] = useState(false);
-    const [allEmployees, setAllEmployees] = useState([]);
-    const [formData, setFormData] = useState({
-        employeeId: '',
-        month: new Date().toISOString().slice(0, 7), // YYYY-MM
-        amount: '',
-        storageUrl: ''
-    });
-    const [submitting, setSubmitting] = useState(false);
-    const [uploading, setUploading] = useState(false);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
 
     // Safe toast function
@@ -140,70 +130,6 @@ const PayslipsPage = ({ userRole, userId, addToast }) => {
         }
     };
 
-    const fetchEmployees = async () => {
-        try {
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('id, full_name, role, email')
-                .order('full_name');
-
-            if (error) throw error;
-            setAllEmployees(data || []);
-        } catch (error) {
-            console.error('Error fetching employees:', error);
-            showToast('Failed to load employee list', 'error');
-        }
-    };
-
-    const handleOpenAddModal = () => {
-        fetchEmployees();
-        setShowAddModal(true);
-    };
-
-    const handleAddPayslip = async (e) => {
-        e.preventDefault();
-        setSubmitting(true);
-
-        try {
-            // Validate
-            if (!formData.employeeId || !formData.amount || !formData.month) {
-                throw new Error('Please fill in all required fields');
-            }
-
-            // Format YYYY-MM to Mon-YYYY
-            const [year, month] = formData.month.split('-');
-            const dateObj = new Date(year, month - 1);
-            const formattedMonth = dateObj.toLocaleString('default', { month: 'short' }) + '-' + year;
-
-            const { error } = await supabase
-                .from('payslips')
-                .insert({
-                    employee_id: formData.employeeId,
-                    month: formattedMonth,
-                    amount: parseFloat(formData.amount),
-                    storage_url: formData.storageUrl
-                });
-
-            if (error) throw error;
-
-            showToast('Payslip added successfully', 'success');
-            setShowAddModal(false);
-            setFormData({
-                employeeId: '',
-                month: new Date().toISOString().slice(0, 7),
-                amount: '',
-                storageUrl: ''
-            });
-            fetchPayslips(); // Refresh list
-
-        } catch (error) {
-            console.error('Error adding payslip:', error);
-            showToast(error.message || 'Failed to add payslip', 'error');
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
     const handleDownload = async (payslip) => {
         if (!payslip.storage_url) {
             showToast('Payslip file not available', 'warning');
@@ -213,47 +139,44 @@ const PayslipsPage = ({ userRole, userId, addToast }) => {
         try {
             showToast('Downloading payslip...', 'info');
 
-            // Extract the simple filename (e.g., "file.pdf")
-            const fileName = payslip.storage_url.split('/').pop();
-            console.log('Target Filename:', fileName);
+            console.log('Storage URL from DB:', payslip.storage_url);
+            console.log('Employee ID:', payslip.employee_id);
 
-            // Define possible paths to check
-            const pathsToTry = [
-                fileName,                     // 1. Try root (most likely for new uploads)
-                `payslips/${fileName}`,       // 2. Try subfolder (likely for old uploads)
-                payslip.storage_url           // 3. Try exact DB string as fallback
-            ];
-
-            // Remove duplicates
-            const uniquePaths = [...new Set(pathsToTry)];
-
-            let blob = null;
-            let lastError = null;
-
-            // Try each path one by one
-            for (const path of uniquePaths) {
-                console.log(`Attempting download from: "${path}"`);
-                const { data, error } = await supabase.storage
-                    .from('payslips')
-                    .download(path);
-
-                if (!error && data) {
-                    console.log('Success!');
-                    blob = data;
-                    break; // Found it!
-                } else {
-                    console.warn(`Failed (${path}):`, error?.message);
-                    lastError = error;
-                }
+            // Extract just the path after the bucket URL
+            // The storage_url looks like: "https://...supabase.co/storage/v1/object/public/PAYSLIPS/employeeId/filename.pdf"
+            // We need just the "employeeId/filename.pdf" part
+            let filePath;
+            if (payslip.storage_url.includes('/PAYSLIPS/')) {
+                filePath = payslip.storage_url.split('/PAYSLIPS/')[1];
+            } else {
+                // Fallback: construct the path from employee_id
+                const fileName = payslip.storage_url.split('/').pop();
+                filePath = `${payslip.employee_id}/${fileName}`;
             }
 
-            if (!blob) {
-                console.error('All download attempts failed.');
-                throw lastError || new Error('File not found in any expected location.');
+            console.log('Attempting to download from path:', filePath);
+
+            // Download from PAYSLIPS bucket (UPPERCASE - must match upload!)
+            const { data, error } = await supabase.storage
+                .from('PAYSLIPS')
+                .download(filePath);
+
+            if (error) {
+                console.error('Download error:', error);
+                throw error;
             }
+
+            if (!data) {
+                throw new Error('No data returned from download');
+            }
+
+            console.log('Download successful, creating blob URL...');
+
+            // Ensure the blob is typed as PDF
+            const pdfBlob = new Blob([data], { type: 'application/pdf' });
 
             // Create blob URL and force download
-            const url = window.URL.createObjectURL(blob);
+            const url = window.URL.createObjectURL(pdfBlob);
             const link = document.createElement('a');
             link.href = url;
             link.download = `Payslip_${payslip.month || 'doc'}_${payslip.name || 'employee'}.pdf`;
@@ -271,6 +194,11 @@ const PayslipsPage = ({ userRole, userId, addToast }) => {
             console.error('Download Logic Error:', error);
             showToast(`Could not download: ${error.message || 'File missing'}`, 'error');
         }
+    };
+
+    const handlePayslipSuccess = (message) => {
+        showToast(message, 'success');
+        setRefreshTrigger(prev => prev + 1); // Refresh the list
     };
 
     const columns = [
@@ -374,8 +302,6 @@ const PayslipsPage = ({ userRole, userId, addToast }) => {
         }
     ];
 
-    const isDebug = false; // Set to true to see debug info
-
     // Determine if user can add payslips
     const canAddPayslips = userRole && (userRole.toLowerCase().includes('executive') || userRole.toLowerCase().includes('manager'));
 
@@ -397,21 +323,6 @@ const PayslipsPage = ({ userRole, userId, addToast }) => {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
-            {/* Debug Banner */}
-            {isDebug && (
-                <div style={{
-                    padding: '10px',
-                    background: '#fef3c7',
-                    border: '1px solid #f59e0b',
-                    borderRadius: '8px',
-                    fontSize: '0.8rem',
-                    color: '#92400e',
-                    marginBottom: '10px'
-                }}>
-                    <strong>Debug Info:</strong> Role="{userRole}" | ID="{userId}"
-                </div>
-            )}
-
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
@@ -438,7 +349,7 @@ const PayslipsPage = ({ userRole, userId, addToast }) => {
                     {/* Add Payslip Button */}
                     {canAddPayslips && (
                         <button
-                            onClick={handleOpenAddModal}
+                            onClick={() => setShowAddModal(true)}
                             style={{
                                 display: 'flex',
                                 alignItems: 'center',
@@ -502,252 +413,12 @@ const PayslipsPage = ({ userRole, userId, addToast }) => {
                 </div>
             )}
 
-            {/* Add Payslip Modal */}
-            {showAddModal && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    backgroundColor: 'rgba(0,0,0,0.5)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    zIndex: 1000
-                }} onClick={() => setShowAddModal(false)}>
-                    <div style={{
-                        backgroundColor: '#fff',
-                        padding: '32px',
-                        borderRadius: '24px',
-                        width: '450px',
-                        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
-                        position: 'relative'
-                    }} onClick={e => e.stopPropagation()}>
-
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                            <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>Add Payslip</h3>
-                            <button onClick={() => setShowAddModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-                                <X size={24} />
-                            </button>
-                        </div>
-
-                        <form onSubmit={handleAddPayslip} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-
-                            {/* Employee Select */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <label style={{ fontSize: '0.9rem', fontWeight: '600', color: '#1e293b' }}>Select Employee</label>
-                                <select
-                                    value={formData.employeeId}
-                                    onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
-                                    required
-                                    style={{
-                                        padding: '12px',
-                                        borderRadius: '12px',
-                                        border: '1px solid #e2e8f0',
-                                        fontSize: '1rem',
-                                        backgroundColor: '#f8fafc'
-                                    }}
-                                >
-                                    <option value="">Select an employee...</option>
-                                    {allEmployees.map(emp => (
-                                        <option key={emp.id} value={emp.id}>
-                                            {emp.full_name} ({emp.role})
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            {/* Month & Year Select */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <label style={{ fontSize: '0.9rem', fontWeight: '600', color: '#1e293b' }}>Pay Period (Month)</label>
-                                <input
-                                    type="month"
-                                    required
-                                    value={formData.month}
-                                    onChange={(e) => setFormData({ ...formData, month: e.target.value })}
-                                    style={{
-                                        padding: '12px',
-                                        borderRadius: '12px',
-                                        border: '1px solid #e2e8f0',
-                                        fontSize: '1rem'
-                                    }}
-                                />
-                            </div>
-
-                            {/* Amount */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <label style={{ fontSize: '0.9rem', fontWeight: '600', color: '#1e293b' }}>Amount (₹)</label>
-                                <div style={{ position: 'relative' }}>
-                                    <span style={{ position: 'absolute', left: '12px', top: '12px', color: '#64748b' }}>₹</span>
-                                    <input
-                                        type="number"
-                                        required
-                                        placeholder="0.00"
-                                        min="0"
-                                        value={formData.amount}
-                                        onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                                        style={{
-                                            padding: '12px 12px 12px 32px',
-                                            borderRadius: '12px',
-                                            border: '1px solid #e2e8f0',
-                                            fontSize: '1rem',
-                                            width: '100%'
-                                        }}
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Payslip Document Upload */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <label style={{ fontSize: '0.9rem', fontWeight: '600', color: '#1e293b' }}>
-                                    Upload Payslip Document (Optional)
-                                </label>
-
-                                <div
-                                    onClick={() => !uploading && document.getElementById('payslip-upload').click()}
-                                    style={{
-                                        border: '2px dashed #e2e8f0',
-                                        borderRadius: '12px',
-                                        padding: '24px',
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        cursor: uploading ? 'wait' : 'pointer',
-                                        backgroundColor: formData.storageUrl ? '#f0fdf4' : '#f8fafc', // Green tint if file present
-                                        transition: 'all 0.2s',
-                                        textAlign: 'center'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                        if (!uploading) e.currentTarget.style.borderColor = '#7c3aed';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        if (!uploading) e.currentTarget.style.borderColor = '#e2e8f0';
-                                    }}
-                                >
-                                    {uploading ? (
-                                        <div style={{ color: '#7c3aed', fontWeight: 500 }}>
-                                            Uploading...
-                                        </div>
-                                    ) : formData.storageUrl ? (
-                                        <>
-                                            <div style={{
-                                                width: '40px',
-                                                height: '40px',
-                                                borderRadius: '50%',
-                                                background: '#dcfce7',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                marginBottom: '8px'
-                                            }}>
-                                                <FileText size={20} color="#166534" />
-                                            </div>
-                                            <span style={{ color: '#166534', fontWeight: 600, fontSize: '0.9rem' }}>
-                                                Document Attached
-                                            </span>
-                                            <span style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '4px' }}>
-                                                Click to replace
-                                            </span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <div style={{
-                                                width: '40px',
-                                                height: '40px',
-                                                borderRadius: '50%',
-                                                background: '#f1f5f9',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                marginBottom: '8px'
-                                            }}>
-                                                <Upload size={20} color="#64748b" />
-                                            </div>
-                                            <span style={{ color: '#1e293b', fontWeight: 500, fontSize: '0.9rem' }}>
-                                                Click to upload file
-                                            </span>
-                                            <span style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '4px' }}>
-                                                PDF or Image (Max 5MB)
-                                            </span>
-                                        </>
-                                    )}
-                                </div>
-
-                                <input
-                                    id="payslip-upload"
-                                    type="file"
-                                    accept=".pdf,.png,.jpg,.jpeg"
-                                    style={{ display: 'none' }}
-                                    onChange={async (e) => {
-                                        const file = e.target.files[0];
-                                        if (!file) return;
-
-                                        // Validate size (5MB)
-                                        if (file.size > 5 * 1024 * 1024) {
-                                            showToast('File size must be less than 5MB', 'error');
-                                            return;
-                                        }
-
-                                        setUploading(true);
-                                        try {
-                                            const fileExt = file.name.split('.').pop();
-                                            const fileName = `${formData.employeeId || 'temp'}_${Date.now()}.${fileExt}`;
-                                            const filePath = fileName; // Upload to root of bucket
-
-                                            const { error: uploadError } = await supabase.storage
-                                                .from('payslips')
-                                                .upload(filePath, file);
-
-                                            if (uploadError) throw uploadError;
-
-                                            // Store the path that matches the download logic (starts with payslips/)
-                                            setFormData({ ...formData, storageUrl: filePath });
-                                            showToast('File uploaded successfully', 'success');
-                                        } catch (error) {
-                                            console.error('Upload error:', error);
-                                            showToast('Failed to upload file', 'error');
-                                        } finally {
-                                            setUploading(false);
-                                        }
-                                    }}
-                                />
-                            </div>
-
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowAddModal(false)}
-                                    style={{
-                                        padding: '12px 24px',
-                                        marginRight: '12px',
-                                        borderRadius: '12px',
-                                        border: 'none',
-                                        backgroundColor: '#f1f5f9',
-                                        color: '#64748b',
-                                        fontWeight: 'bold',
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={submitting}
-                                    style={{
-                                        padding: '12px 24px',
-                                        borderRadius: '12px',
-                                        border: 'none',
-                                        backgroundColor: '#000',
-                                        color: '#fff',
-                                        fontWeight: 'bold',
-                                        cursor: submitting ? 'wait' : 'pointer',
-                                        opacity: submitting ? 0.7 : 1
-                                    }}
-                                >
-                                    {submitting ? 'Adding...' : 'Add Payslip'}
-                                </button>
-                            </div>
-
-                        </form>
-                    </div>
-                </div>
-            )}
+            {/* New Payslip Form Modal */}
+            <PayslipFormModal
+                isOpen={showAddModal}
+                onClose={() => setShowAddModal(false)}
+                onSuccess={handlePayslipSuccess}
+            />
         </div>
     );
 };

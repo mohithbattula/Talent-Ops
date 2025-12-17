@@ -11,6 +11,7 @@ import ProjectHierarchyDemo from '../../shared/ProjectHierarchyDemo';
 import { AddEmployeeModal } from '../../shared/AddEmployeeModal';
 import { supabase } from '../../../lib/supabaseClient';
 import PayslipsPage from '../../shared/PayslipsPage';
+import PayrollPage from '../../shared/PayrollPage';
 import AnnouncementsPage from '../../shared/AnnouncementsPage';
 import { useUser } from '../context/UserContext';
 
@@ -532,6 +533,7 @@ const ModulePage = ({ title, type }) => {
     if (title === 'Settings') return <SettingsDemo />;
     if (title === 'Announcements') return <AnnouncementsPage userRole={userRole} userId={userId} />;
     if (type === 'payroll') return <PayslipsPage userRole={userRole} userId={userId} addToast={addToast} />;
+    if (type === 'payroll-generation') return <PayrollPage userRole={userRole} userId={userId} addToast={addToast} />;
 
     // Mock Data Configurations
     const configs = {
