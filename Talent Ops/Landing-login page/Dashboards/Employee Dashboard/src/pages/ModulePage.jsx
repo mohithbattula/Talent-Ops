@@ -327,6 +327,27 @@ const ModulePage = ({ title, type }) => {
                 { name: 'Alex Morgan', month: 'December 2025', salary: '$5,500', status: 'Pending' },
             ].filter(item => item.name === userName)
         },
+        policies: {
+            columns: [
+                { header: 'Policy Name', accessor: 'name' },
+                { header: 'Category', accessor: 'category' },
+                { header: 'Effective Date', accessor: 'effectiveDate' },
+                {
+                    header: 'Status', accessor: 'status', render: (row) => (
+                        <span style={{ color: row.status === 'Active' ? 'var(--success)' : 'var(--text-secondary)', fontWeight: 600 }}>{row.status}</span>
+                    )
+                },
+                { header: 'Document', accessor: 'action', render: () => <span style={{ color: 'var(--accent)', cursor: 'pointer' }}>Download</span> }
+            ],
+            data: [
+                { name: 'Leave Policy', category: 'HR', effectiveDate: 'Jan 01, 2025', status: 'Active' },
+                { name: 'Work From Home Policy', category: 'HR', effectiveDate: 'Jan 01, 2025', status: 'Active' },
+                { name: 'Code of Conduct', category: 'Compliance', effectiveDate: 'Jan 01, 2025', status: 'Active' },
+                { name: 'Data Security Policy', category: 'IT', effectiveDate: 'Feb 15, 2025', status: 'Active' },
+                { name: 'Expense Reimbursement', category: 'Finance', effectiveDate: 'Jan 01, 2025', status: 'Active' },
+                { name: 'Performance Review Policy', category: 'HR', effectiveDate: 'Jan 01, 2025', status: 'Active' },
+            ]
+        },
         // Default fallback for other modules
         default: {
             columns: [

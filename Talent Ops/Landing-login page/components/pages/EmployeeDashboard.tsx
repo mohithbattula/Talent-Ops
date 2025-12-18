@@ -26,6 +26,7 @@ export const EmployeeDashboard = () => {
                         <Route path="leaves" element={<ModulePage title="Leave Requests" type="leaves" />} />
                         <Route path="team-status" element={<ModulePage title="Your Status" type="status" />} />
                         <Route path="payslips" element={<ModulePage title="Your Payslip" type="payroll" />} />
+                        <Route path="policies" element={<ModulePage title="Policies" type="policies" />} />
                         <Route path="hierarchy" element={<ModulePage title="Organizational Hierarchy" type="default" />} />
                         <Route path="project-hierarchy" element={<ModulePage title="Project Hierarchy" type="default" />} />
                         <Route path="announcements" element={<ModulePage title="Announcements" type="default" />} />

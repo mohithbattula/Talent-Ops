@@ -7,6 +7,7 @@ import {
     CalendarOff,
     Receipt,
     DollarSign,
+    FileCheck,
     Briefcase,
     Network,
     ClipboardList,
@@ -43,6 +44,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
         { icon: CalendarOff, label: 'My Leaves', path: '/manager-dashboard/my-leaves' },
         { icon: UserCheck, label: 'Employee Status', path: '/manager-dashboard/employee-status' },
         { icon: Receipt, label: 'Payslips', path: '/manager-dashboard/payslips' },
+        { icon: FileCheck, label: 'Policies', path: '/manager-dashboard/policies' },
         { icon: DollarSign, label: 'Payroll', path: '/manager-dashboard/payroll' },
         { icon: Briefcase, label: 'Hiring Portal', path: '/manager-dashboard/hiring' },
         {

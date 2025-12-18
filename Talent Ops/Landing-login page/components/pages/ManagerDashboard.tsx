@@ -29,6 +29,7 @@ export const ManagerDashboard = () => {
                         <Route path="my-leaves" element={<MyLeavesPage />} />
                         <Route path="employee-status" element={<ModulePage title="Employee Status" type="status" />} />
                         <Route path="payslips" element={<ModulePage title="Payslips" type="payroll" />} />
+                        <Route path="policies" element={<ModulePage title="Policies" type="policies" />} />
                         <Route path="payroll" element={<ModulePage title="Payroll" type="payroll-generation" />} />
                         <Route path="hiring" element={<ModulePage title="Hiring Portal" type="recruitment" />} />
                         <Route path="hierarchy" element={<ModulePage title="Organizational Hierarchy" type="default" />} />

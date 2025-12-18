@@ -6,6 +6,7 @@ import {
     ListTodo,
     CalendarOff,
     Receipt,
+    FileText,
     Briefcase,
     Network,
     ClipboardList,
@@ -41,6 +42,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
         { icon: CalendarOff, label: 'Leave Requests', path: '/employee-dashboard/leaves' },
         { icon: UserCheck, label: 'Your Status', path: '/employee-dashboard/team-status' },
         { icon: Receipt, label: 'Your Payslip', path: '/employee-dashboard/payslips' },
+        { icon: FileText, label: 'Policies', path: '/employee-dashboard/policies' },
         {
             icon: Network,
             label: 'Hierarchy',

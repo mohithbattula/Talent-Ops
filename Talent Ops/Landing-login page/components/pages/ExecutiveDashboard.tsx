@@ -33,6 +33,7 @@ export const ExecutiveDashboard = () => {
                             <Route path="leaves" element={<ModulePage title="Leave Requests" type="leaves" />} />
                             <Route path="employee-status" element={<ModulePage title="Employee Status" type="status" />} />
                             <Route path="payslips" element={<ModulePage title="Payslips" type="payroll" />} />
+                            <Route path="policies" element={<ModulePage title="Policies" type="policies" />} />
                             <Route path="payroll" element={<ModulePage title="Payroll" type="payroll-generation" />} />
                             <Route path="invoice" element={<ModulePage title="Invoice" type="invoice" />} />
                             <Route path="hiring" element={<HiringPortal />} />

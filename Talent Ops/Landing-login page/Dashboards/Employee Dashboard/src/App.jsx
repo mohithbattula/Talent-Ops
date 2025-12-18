@@ -22,6 +22,7 @@ function App() {
               <Route path="/leaves" element={<ModulePage title="Leave Requests" type="leaves" />} />
               <Route path="/team-status" element={<ModulePage title="Your Status" type="status" />} />
               <Route path="/payslips" element={<ModulePage title="Your Payslip" type="payroll" />} />
+              <Route path="/policies" element={<ModulePage title="Your Policies" type="policies" />} />
 
               <Route path="/hierarchy" element={<ModulePage title="Team Hierarchy" type="default" />} />
               <Route path="/audit" element={<ModulePage title="Audit Logs" type="default" />} />

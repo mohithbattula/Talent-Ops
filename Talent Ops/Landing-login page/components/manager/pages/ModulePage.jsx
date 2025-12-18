@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, X, Eye, Mail, Phone, MapPin, Calendar, Briefcase } from 'lucide-react';
+import { Plus, X, Eye, Mail, Phone, MapPin, Calendar, Briefcase, Download } from 'lucide-react';
 import DataTable from '../components/UI/DataTable';
 import { useToast } from '../context/ToastContext';
 import AnalyticsDemo from '../components/Demo/AnalyticsDemo';
@@ -13,6 +13,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import PayslipsPage from '../../shared/PayslipsPage';
 import PayrollPage from '../../shared/PayrollPage';
 import AnnouncementsPage from '../../shared/AnnouncementsPage';
+import { AddPolicyModal } from '../../shared/AddPolicyModal';
 import { useUser } from '../context/UserContext';
 
 const ModulePage = ({ title, type }) => {
@@ -52,6 +53,11 @@ const ModulePage = ({ title, type }) => {
     const [employeeStatus, setEmployeeStatus] = useState([]);
     const [dbLeaves, setDbLeaves] = useState([]);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+    // State for Policies
+    const [policies, setPolicies] = useState([]);
+    const [showAddPolicyModal, setShowAddPolicyModal] = useState(false);
+
 
     React.useEffect(() => {
         const fetchData = async () => {
@@ -308,6 +314,46 @@ const ModulePage = ({ title, type }) => {
         }
     }, [type, refreshTrigger]);
 
+    // Fetch Policies from Supabase
+    React.useEffect(() => {
+        const fetchPolicies = async () => {
+            if (type === 'policies') {
+                try {
+                    console.log('Fetching policies from Supabase...');
+                    const { data, error } = await supabase
+                        .from('policies')
+                        .select('*')
+                        .eq('status', 'Active')
+                        .order('created_at', { ascending: false });
+
+                    if (error) {
+                        console.error('Error fetching policies:', error);
+                        addToast('Failed to load policies', 'error');
+                        return;
+                    }
+
+                    if (data) {
+                        const transformedPolicies = data.map(policy => ({
+                            id: policy.id,
+                            name: policy.title || 'Untitled Policy',
+                            category: policy.category || 'General',
+                            effectiveDate: policy.effective_date ? new Date(policy.effective_date).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : 'N/A',
+                            status: policy.status || 'Active',
+                            file_url: policy.file_url
+                        }));
+                        setPolicies(transformedPolicies);
+                    }
+                } catch (err) {
+                    console.error('Unexpected error fetching policies:', err);
+                    addToast('An unexpected error occurred while loading policies', 'error');
+                }
+            }
+        };
+
+        fetchPolicies();
+    }, [type, refreshTrigger]);
+
+
     // Real-time Subscription for Live Status & Data
     React.useEffect(() => {
         const sub = supabase
@@ -362,6 +408,116 @@ const ModulePage = ({ title, type }) => {
         );
         setEmployeeTasks(tasks);
         setShowLeaveDetailsModal(true);
+    };
+
+    const handlePolicyView = async (policy) => {
+        try {
+            console.log('Attempting to view policy:', policy);
+
+            if (!policy.file_url) {
+                console.error('No file_url found in policy object');
+                addToast('No document available to view', 'error');
+                return;
+            }
+
+            addToast('Opening document...', 'info');
+
+            // Extract file path from the storage URL
+            let filePath;
+            if (policy.file_url.includes('/policies/')) {
+                filePath = policy.file_url.split('/policies/')[1];
+            } else {
+                filePath = policy.file_url.split('/').pop();
+            }
+
+            console.log('Viewing path:', filePath);
+
+            // Create a signed URL valid for 60 seconds
+            const { data, error } = await supabase.storage
+                .from('policies')
+                .createSignedUrl(filePath, 60);
+
+            if (error) {
+                console.error('Error creating signed URL:', error);
+                throw error;
+            }
+
+            if (data?.signedUrl) {
+                window.open(data.signedUrl, '_blank');
+            } else {
+                throw new Error('No signed URL returned');
+            }
+
+        } catch (error) {
+            console.error('View error:', error);
+            addToast(`Could not view document: ${error.message}`, 'error');
+        }
+    };
+
+    const handlePolicyDownload = async (policy) => {
+        try {
+            console.log('Attempting to download policy:', policy);
+            console.log('File URL:', policy.file_url);
+
+            if (!policy.file_url) {
+                console.error('No file_url found in policy object');
+                addToast('No document available for this policy', 'error');
+                return;
+            }
+
+            addToast('Downloading policy...', 'info');
+
+            // Extract file path from the storage URL
+            let filePath;
+            if (policy.file_url.includes('/policies/')) {
+                filePath = policy.file_url.split('/policies/')[1];
+            } else {
+                filePath = policy.file_url.split('/').pop();
+            }
+
+            console.log('Downloading from path:', filePath);
+
+            // Download from policies bucket
+            const { data, error } = await supabase.storage
+                .from('policies')
+                .download(filePath);
+
+            if (error) {
+                console.error('Download error:', error);
+                throw error;
+            }
+
+            if (!data) {
+                throw new Error('No data returned from download');
+            }
+
+            console.log('Download successful, creating blob URL...');
+
+            const pdfBlob = new Blob([data], { type: 'application/pdf' });
+            const url = window.URL.createObjectURL(pdfBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${policy.name}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+
+            setTimeout(() => {
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+            }, 100);
+
+            addToast(`${policy.name} downloaded successfully`, 'success');
+
+        } catch (error) {
+            console.error('Download error:', error);
+            addToast(`Could not download: ${error.message || 'File missing'}`, 'error');
+        }
+    };
+
+    const handlePolicySuccess = (newPolicy) => {
+        // Refresh the policies list
+        setRefreshTrigger(prev => prev + 1);
+        addToast(`Policy "${newPolicy.title}" created successfully!`, 'success');
     };
 
     const handleAction = async (action, item) => {
@@ -434,6 +590,8 @@ const ModulePage = ({ title, type }) => {
         } else if (action === 'View Candidate') {
             setSelectedCandidate(item);
             setShowCandidateModal(true);
+        } else if (type === 'policies' && action === 'Add Policy') {
+            setShowAddPolicyModal(true);
         } else {
             addToast(`${action} clicked${item ? ` for ${item.name || item.id}` : ''}`, 'info');
         }
@@ -816,6 +974,93 @@ const ModulePage = ({ title, type }) => {
                 { header: 'Payslip', accessor: 'action', render: () => <span style={{ color: 'var(--accent)', cursor: 'pointer' }}>Download</span> }
             ],
             data: []
+        },
+        policies: {
+            columns: [
+                { header: 'Policy Name', accessor: 'name' },
+                { header: 'Category', accessor: 'category' },
+                { header: 'Effective Date', accessor: 'effectiveDate' },
+                {
+                    header: 'Status', accessor: 'status', render: (row) => (
+                        <span style={{ color: row.status === 'Active' ? 'var(--success)' : 'var(--text-secondary)', fontWeight: 600 }}>{row.status}</span>
+                    )
+                },
+                {
+                    header: 'View',
+                    accessor: 'view',
+                    render: (row) => (
+                        <button
+                            onClick={() => handlePolicyView(row)}
+                            style={{
+                                padding: '8px 16px',
+                                borderRadius: '8px',
+                                fontSize: '0.875rem',
+                                fontWeight: 600,
+                                backgroundColor: '#e0f2fe',
+                                color: '#0369a1',
+                                border: 'none',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                transition: 'all 0.2s',
+                                boxShadow: 'var(--shadow-sm)'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor = '#bae6fd';
+                                e.currentTarget.style.transform = 'translateY(-2px)';
+                                e.currentTarget.style.boxShadow = 'var(--shadow-md)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = '#e0f2fe';
+                                e.currentTarget.style.transform = 'translateY(0)';
+                                e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
+                            }}
+                        >
+                            <Eye size={16} />
+                            View
+                        </button>
+                    )
+                },
+                {
+                    header: 'Download',
+                    accessor: 'download',
+                    render: (row) => (
+                        <button
+                            onClick={() => handlePolicyDownload(row)}
+                            style={{
+                                padding: '8px 16px',
+                                borderRadius: '8px',
+                                fontSize: '0.875rem',
+                                fontWeight: 600,
+                                backgroundColor: '#7c3aed',
+                                color: 'white',
+                                border: 'none',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                transition: 'all 0.2s',
+                                boxShadow: 'var(--shadow-sm)'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor = '#6d28d9';
+                                e.currentTarget.style.transform = 'translateY(-2px)';
+                                e.currentTarget.style.boxShadow = 'var(--shadow-md)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = '#7c3aed';
+                                e.currentTarget.style.transform = 'translateY(0)';
+                                e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
+                            }}
+                        >
+                            <Download size={16} />
+                            Download
+                        </button>
+                    )
+                }
+            ],
+            data: policies
         },
         // Default fallback for other modules
         default: {
@@ -1506,6 +1751,13 @@ const ModulePage = ({ title, type }) => {
                     </div>
                 </div>
             )}
+
+            {/* Add Policy Modal */}
+            <AddPolicyModal
+                isOpen={showAddPolicyModal}
+                onClose={() => setShowAddPolicyModal(false)}
+                onSuccess={handlePolicySuccess}
+            />
         </div>
     );
 };
