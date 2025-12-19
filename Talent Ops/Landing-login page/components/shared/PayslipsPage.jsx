@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { Download, FileText, Calendar, DollarSign, Plus } from 'lucide-react';
 import DataTable from '../employee/components/UI/DataTable';
-import PayslipFormModal from '../../../../Payslips/src/components/PayslipFormModal';
+import PayslipFormModal from './payslip/PayslipFormModal';
 
 const PayslipsPage = ({ userRole, userId, addToast }) => {
     const [payslips, setPayslips] = useState([]);

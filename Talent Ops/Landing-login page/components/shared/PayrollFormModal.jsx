@@ -12,7 +12,7 @@ import {
     checkPayrollExists
 } from '../../utils/payrollCalculations';
 import { X, FileText, CheckSquare, Square, Calculator, AlertTriangle } from 'lucide-react';
-import '../../../../Payslips/src/components/PayslipFormModal.css';
+import './payslip/PayslipFormModal.css';
 
 const PayrollFormModal = ({ isOpen, onClose, onSuccess }) => {
     const [employees, setEmployees] = useState([]);

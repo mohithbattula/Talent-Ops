@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import { supabase } from '../supabaseClientProxy';
+import { supabase } from '../lib/supabaseClient';
 
 /**
  * Safe text wrapper to prevent jsPDF errors

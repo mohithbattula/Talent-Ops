@@ -1,4 +1,4 @@
-import { supabase } from '../supabaseClientProxy';
+import { supabase } from '../lib/supabaseClient';
 
 /**
  * Generate a unique payslip number

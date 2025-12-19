@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClientProxy';
+import { supabase } from '../../../lib/supabaseClient';
 import {
     generatePayslipNumber,
     calculatePresentDays,
     calculateLeaveDays,
     formatMonth
-} from '../utils/payslipHelpers';
-import { generatePayslipPDF, uploadPayslipPDF } from '../utils/pdfGenerator';
+} from '../../../utils/payslipHelpers';
+import { generatePayslipPDF, uploadPayslipPDF } from '../../../utils/pdfGenerator';
 import { X, FileText } from 'lucide-react';
 import PayslipPreview from './PayslipPreview';
 import './PayslipFormModal.css';
