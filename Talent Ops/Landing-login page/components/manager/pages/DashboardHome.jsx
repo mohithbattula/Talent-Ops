@@ -122,7 +122,9 @@ const DashboardHome = () => {
                         location: event.location,
                         color: '#e0f2fe', // Default color for announcements
                         scope: event.event_for,
-                        participants: []
+                        participants: [],
+                        status: event.status,
+                        type: 'announcement'
                     }));
                     combinedEvents = [...combinedEvents, ...formattedEvents];
                 }
@@ -143,8 +145,22 @@ const DashboardHome = () => {
                     combinedEvents = [...combinedEvents, ...taskEvents];
                 }
 
-                // Sort by time
-                combinedEvents.sort((a, b) => a.time.localeCompare(b.time));
+                // Sort by priority: Active > Future > Completed, then by time within each group
+                combinedEvents.sort((a, b) => {
+                    const getStatusPriority = (event) => {
+                        if (event.type !== 'announcement') return 0;
+                        const status = event.status || ((event.date === formatDate(new Date())) ? 'active' : (new Date(event.date) < new Date().setHours(0, 0, 0, 0) ? 'completed' : 'future'));
+                        if (status === 'active') return 1;
+                        if (status === 'future') return 2;
+                        return 3;
+                    };
+
+                    const priorityA = getStatusPriority(a);
+                    const priorityB = getStatusPriority(b);
+
+                    if (priorityA !== priorityB) return priorityA - priorityB;
+                    return a.time.localeCompare(b.time);
+                });
 
                 setTimeline(combinedEvents);
 
@@ -571,6 +587,13 @@ const DashboardHome = () => {
                                             cursor: 'pointer',
                                             boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
                                         }}
+                                            onClick={() => {
+                                                if (event.scope === 'task') {
+                                                    navigate('/manager-dashboard/tasks');
+                                                } else if (event.type === 'announcement') {
+                                                    navigate('/manager-dashboard/announcements');
+                                                }
+                                            }}
                                             onMouseEnter={(e) => {
                                                 e.currentTarget.style.transform = 'translateY(-2px)';
                                                 e.currentTarget.style.boxShadow = '0 8px 16px -4px rgba(0,0,0,0.1)';
@@ -585,6 +608,21 @@ const DashboardHome = () => {
                                                 <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#94a3b8' }}></div>
                                                 {event.location}
                                             </div>
+                                            {event.type === 'announcement' && (
+                                                <span style={{
+                                                    fontSize: '0.65rem',
+                                                    fontWeight: 'bold',
+                                                    textTransform: 'uppercase',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '8px',
+                                                    marginTop: '4px',
+                                                    display: 'inline-block',
+                                                    backgroundColor: (event.status === 'completed' || new Date(event.date) < new Date().setHours(0, 0, 0, 0)) ? '#f1f5f9' : (event.status === 'active' || event.date === formatDate(new Date())) ? '#dcfce7' : '#e0f2fe',
+                                                    color: (event.status === 'completed' || new Date(event.date) < new Date().setHours(0, 0, 0, 0)) ? '#64748b' : (event.status === 'active' || event.date === formatDate(new Date())) ? '#166534' : '#0369a1'
+                                                }}>
+                                                    {(event.status === 'completed' || new Date(event.date) < new Date().setHours(0, 0, 0, 0)) ? 'Completed' : (event.status === 'active' || event.date === formatDate(new Date())) ? 'Active' : 'Future'}
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                 ))

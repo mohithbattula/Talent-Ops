@@ -1,12 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import { Calendar, MapPin, Clock, Users, User, X, Plus } from 'lucide-react';
+import { Calendar, MapPin, Clock, Users, User, X, Plus, CheckCircle2, Archive, AlertCircle } from 'lucide-react';
 
 const AnnouncementsPage = ({ userRole, userId }) => {
     const [announcements, setAnnouncements] = useState([]);
+    const [filteredAnnouncements, setFilteredAnnouncements] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedEvent, setSelectedEvent] = useState(null);
     const [eventParticipants, setEventParticipants] = useState({ loading: false, names: [], type: '' });
+
+    // Status Tab State
+    const [activeTab, setActiveTab] = useState('active'); // 'active', 'upcoming', 'completed'
 
     // Add Event State
     const [showAddModal, setShowAddModal] = useState(false);
@@ -16,6 +20,7 @@ const AnnouncementsPage = ({ userRole, userId }) => {
     const [allTeams, setAllTeams] = useState([]);
     const [allEmployees, setAllEmployees] = useState([]);
     const [loadingOptions, setLoadingOptions] = useState(false);
+    const [userTeamId, setUserTeamId] = useState(null);
 
     // Form Data
     const [newEvent, setNewEvent] = useState({
@@ -27,101 +32,151 @@ const AnnouncementsPage = ({ userRole, userId }) => {
     });
 
     const isAuthorized = ['executive', 'manager', 'team_lead', 'employee'].includes(userRole);
+    const canManageEvents = ['executive', 'manager'].includes(userRole); // Only them can edit status
+    const canMarkCompleted = isAuthorized; // All roles can mark as completed
 
     useEffect(() => {
-        const fetchData = async () => {
-            try {
-                setLoading(true);
+        fetchData();
+    }, [userRole, userId, showAddModal]);
 
-                // 1. Fetch User Profile to get team_id
-                let userTeamId = null;
-                if (userRole !== 'executive' && userRole !== 'manager') {
-                    const { data: profile } = await supabase
-                        .from('profiles')
-                        .select('team_id')
-                        .eq('id', userId)
-                        .single();
-                    if (profile) userTeamId = profile.team_id;
+    const fetchData = async () => {
+        try {
+            setLoading(true);
+
+            // 1. Fetch User Profile to get team_id
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('team_id')
+                .eq('id', userId)
+                .single();
+            if (profile) setUserTeamId(profile.team_id);
+
+            // 2. Fetch Announcements
+            const { data, error } = await supabase
+                .from('announcements')
+                .select('*')
+                .order('event_date', { ascending: true });
+
+            if (error) throw error;
+
+            if (data) {
+                // Auto-update statuses based on date
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+
+                const updates = data.filter(event => {
+                    const eventDate = new Date(event.event_date);
+                    eventDate.setHours(0, 0, 0, 0);
+
+                    // Logic: Future -> Active -> Completed
+                    // We only upgrade status, never downgrade (to respect manual completion or logic)
+                    // If DB is 'future' and Date is Today -> Update to 'active'
+                    // If DB is 'future'/'active' and Date is Past -> Update to 'completed'
+
+                    if (event.status === 'future') {
+                        if (eventDate.getTime() === today.getTime()) return true; // targeted: active
+                        if (eventDate < today) return true; // targeted: completed
+                    }
+                    if (event.status === 'active') {
+                        if (eventDate < today) return true; // targeted: completed
+                    }
+                    return false;
+                }).map(event => {
+                    const eventDate = new Date(event.event_date);
+                    eventDate.setHours(0, 0, 0, 0);
+                    let newStatus = event.status;
+
+                    if (eventDate.getTime() === today.getTime()) newStatus = 'active';
+                    else if (eventDate < today) newStatus = 'completed';
+
+                    return { id: event.id, status: newStatus };
+                });
+
+                if (updates.length > 0) {
+                    // Perform updates in background
+                    updates.forEach(async (update) => {
+                        await supabase.from('announcements').update({ status: update.status }).eq('id', update.id);
+                    });
+
+                    // Update local data immediately
+                    data.forEach(d => {
+                        const update = updates.find(u => u.id === d.id);
+                        if (update) d.status = update.status;
+                    });
                 }
 
-                // 2. Fetch Announcements
-                const { data, error } = await supabase
-                    .from('announcements')
-                    .select('*')
-                    .order('event_date', { ascending: true });
+                const visibleEvents = data.filter(a => {
+                    // All Logic - Visible to Everyone
+                    if (a.event_for === 'all') return true;
 
-                if (error) throw error;
+                    // Executives and Managers see all
+                    if (userRole === 'executive' || userRole === 'manager') return true;
 
-                if (data) {
-                    const filtered = data.filter(a => {
-                        // All Logic - Visible to Everyone
-                        if (a.event_for === 'all') return true;
+                    let targetTeams = [];
+                    let targetEmployees = [];
+                    try {
+                        targetTeams = typeof a.teams === 'string' ? JSON.parse(a.teams) : (a.teams || []);
+                        targetEmployees = typeof a.employees === 'string' ? JSON.parse(a.employees) : (a.employees || []);
+                    } catch (e) {
+                        console.error("Error parsing targets", e);
+                    }
 
-                        // Executives and Managers see all
-                        if (userRole === 'executive' || userRole === 'manager') return true;
+                    if (a.event_for === 'team') {
+                        return targetTeams.includes(userTeamId);
+                    } else if (a.event_for === 'specific' || a.event_for === 'employee') {
+                        return targetEmployees.includes(userId);
+                    }
+                    return false;
+                });
 
-                        let targetTeams = [];
-                        let targetEmployees = [];
-                        try {
-                            targetTeams = typeof a.teams === 'string' ? JSON.parse(a.teams) : (a.teams || []);
-                            targetEmployees = typeof a.employees === 'string' ? JSON.parse(a.employees) : (a.employees || []);
-                        } catch (e) {
-                            console.error("Error parsing targets", e);
-                        }
-
-                        if (a.event_for === 'team') {
-                            return targetTeams.includes(userTeamId);
-                        } else if (a.event_for === 'specific' || a.event_for === 'employee') {
-                            return targetEmployees.includes(userId);
-                        }
-                        return false;
-                    });
-
-                    // Sort Logic: Upcoming (Ascending) -> Past (Descending)
-                    const now = new Date(); // Full current timestamp
-
-                    const upcoming = [];
-                    const past = [];
-
-                    filtered.forEach(event => {
-                        // Construct full date object from date + time
-                        const dateTimeString = `${event.event_date}T${event.event_time}`;
-                        const eventDateTime = new Date(dateTimeString);
-
-                        if (eventDateTime >= now) {
-                            upcoming.push(event);
-                        } else {
-                            past.push(event);
-                        }
-                    });
-
-                    // Sort Upcoming: Nearest first (Ascending)
-                    upcoming.sort((a, b) => {
-                        const dateA = new Date(`${a.event_date}T${a.event_time}`);
-                        const dateB = new Date(`${b.event_date}T${b.event_time}`);
-                        return dateA - dateB;
-                    });
-
-                    // Sort Past: Most recent past first (Descending)
-                    past.sort((a, b) => {
-                        const dateA = new Date(`${a.event_date}T${a.event_time}`);
-                        const dateB = new Date(`${b.event_date}T${b.event_time}`);
-                        return dateB - dateA;
-                    });
-
-                    setAnnouncements([...upcoming, ...past]);
-                }
-            } catch (err) {
-                console.error('Error loading announcements:', err);
-            } finally {
-                setLoading(false);
+                setAnnouncements(visibleEvents);
             }
-        };
-
-        if (userId) {
-            fetchData();
+        } catch (err) {
+            console.error('Error loading announcements:', err);
+        } finally {
+            setLoading(false);
         }
-    }, [userRole, userId, showAddModal]); // Reload when modal closes (after add)
+    };
+
+    // Filter Logic based on Active Tab
+    useEffect(() => {
+        if (!announcements) return;
+
+        const now = new Date();
+        now.setHours(0, 0, 0, 0); // Normalize to start of day for accurate date comparison
+
+        const filtered = announcements.filter(event => {
+            const eventDate = new Date(event.event_date);
+            eventDate.setHours(0, 0, 0, 0);
+
+            // Logic: Status Column (if exists) > Date Logic
+            // We simulate status if column is missing or null
+            let effectiveStatus = event.status;
+
+            if (!effectiveStatus || effectiveStatus === 'future') {
+                if (eventDate > now) effectiveStatus = 'future';
+                else if (eventDate.getTime() === now.getTime()) effectiveStatus = 'active';
+                else effectiveStatus = 'completed';
+            }
+
+            // Convert DB status to Tab keys
+            // Tab keys: 'upcoming' (scheduled), 'active', 'completed'
+            if (activeTab === 'upcoming') return effectiveStatus === 'future';
+            if (activeTab === 'active') return effectiveStatus === 'active';
+            if (activeTab === 'completed') return effectiveStatus === 'completed';
+            return false;
+        });
+
+        // Sort: Active/Upcoming = Ascending (Nearest first), Completed = Descending (Recent first)
+        filtered.sort((a, b) => {
+            const dateA = new Date(`${a.event_date}T${a.event_time}`);
+            const dateB = new Date(`${b.event_date}T${b.event_time}`);
+            return activeTab === 'completed' ? dateB - dateA : dateA - dateB;
+        });
+
+        setFilteredAnnouncements(filtered);
+    }, [announcements, activeTab]);
+
 
     // Fetch Participants for Selected Event
     useEffect(() => {
@@ -158,7 +213,7 @@ const AnnouncementsPage = ({ userRole, userId }) => {
                     } else {
                         setEventParticipants({ loading: false, names: [], type: 'team' });
                     }
-                } else if (selectedEvent.event_for === 'employee' || selectedEvent.event_for === 'specific') { // Handle both just in case
+                } else if (selectedEvent.event_for === 'employee' || selectedEvent.event_for === 'specific') {
                     let empIds = [];
                     try {
                         empIds = typeof selectedEvent.employees === 'string' ? JSON.parse(selectedEvent.employees) : (selectedEvent.employees || []);
@@ -222,22 +277,42 @@ const AnnouncementsPage = ({ userRole, userId }) => {
     const handleAddEvent = async (e) => {
         e.preventDefault();
         try {
+            // Determine initial status based on date
+            const today = new Date().toISOString().split('T')[0];
+            let initialStatus = 'future';
+            if (newEvent.date === today) initialStatus = 'active';
+            else if (newEvent.date < today) initialStatus = 'completed';
+
             const payload = {
                 title: newEvent.title,
                 event_date: newEvent.date,
                 event_time: newEvent.time,
                 location: newEvent.location,
                 message: newEvent.message,
-                event_for: eventScope === 'my_team' ? 'employee' : eventScope, // 'all', 'team', 'employee'
+                event_for: eventScope === 'my_team' ? 'employee' : eventScope,
                 teams: eventScope === 'team' ? selectedTeams : [],
                 employees: (eventScope === 'employee' || eventScope === 'my_team') ? selectedEmployees : [],
+                // status: initialStatus // Omitted to rely on default 'scheduled' or user DB schema if added
             };
 
-            const { error } = await supabase
-                .from('announcements')
-                .insert(payload);
+            // If user ran the migration, status column exists. If not, this might error if we send a column that doesn't exist?
+            // Actually, Supabase JS client ignores extra fields usually, OR throws error.
+            // Requirement says "Add announcement status support". User said "yes do" to sql.
+            // I will add status to payload. If column missing, it might error.
+            // To be safe, let's include it. If it fails, I'll catch and retry without it.
 
-            if (error) throw error;
+            let response = await supabase.from('announcements').insert({ ...payload, status: initialStatus });
+
+            if (response.error && (
+                response.error.message.includes('column "status" of relation "announcements" does not exist') ||
+                response.error.message.includes("Could not find the 'status' column")
+            )) {
+                // Retry without status
+                response = await supabase.from('announcements').insert(payload);
+                console.warn("Status column missing or schema cache stale, proceeding without it.");
+            }
+
+            if (response.error) throw response.error;
 
             alert('Event added successfully!');
             setShowAddModal(false);
@@ -245,10 +320,52 @@ const AnnouncementsPage = ({ userRole, userId }) => {
             setEventScope('all');
             setSelectedTeams([]);
             setSelectedEmployees([]);
+            fetchData(); // Refresh list
 
         } catch (err) {
             console.error("Error adding event:", err);
             alert("Failed to add event: " + err.message);
+        }
+    };
+
+    const handleUpdateStatus = async (e, eventId, newStatus) => {
+        e.stopPropagation();
+        if (!confirm(`Are you sure you want to mark this event as ${newStatus}?`)) return;
+
+        try {
+            const { error } = await supabase
+                .from('announcements')
+                .update({ status: newStatus })
+                .eq('id', eventId);
+
+            if (error) {
+                // Graceful fallback if column missing
+                if (error.message.includes('column "status" of relation "announcements" does not exist') ||
+                    error.message.includes("Could not find the 'status' column")) {
+                    alert("The 'status' column does not exist in your database or schema cache needs refresh. Please run the migration script provided.");
+                    return;
+                }
+                throw error;
+            }
+
+            // Update local state immediately for better UX
+            setAnnouncements(prev => prev.map(ev =>
+                ev.id === eventId ? { ...ev, status: newStatus } : ev
+            ));
+
+            if (selectedEvent && selectedEvent.id === eventId) {
+                setSelectedEvent(prev => ({ ...prev, status: newStatus }));
+            }
+
+            // Close modal and switch to completed tab when marking as completed
+            if (newStatus === 'completed') {
+                setSelectedEvent(null);
+                setActiveTab('completed');
+            }
+
+        } catch (err) {
+            console.error("Error updating status:", err);
+            alert("Failed to update status. Please try again.");
         }
     };
 
@@ -283,7 +400,7 @@ const AnnouncementsPage = ({ userRole, userId }) => {
                             cursor: 'pointer',
                             boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
                             transition: 'background-color 0.2s',
-                            height: 'fit-content' // visual alignment
+                            height: 'fit-content'
                         }}
                         onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1e293b'}
                         onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#0f172a'}
@@ -294,14 +411,52 @@ const AnnouncementsPage = ({ userRole, userId }) => {
                 )}
             </div>
 
+            {/* Tabs */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', borderBottom: '1px solid #e2e8f0', paddingBottom: '0' }}>
+                {[
+                    { id: 'active', label: 'Active Now', icon: CheckCircle2 },
+                    { id: 'upcoming', label: 'Future', icon: Calendar },
+                    { id: 'completed', label: 'Completed', icon: Archive }
+                ].map((tab) => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '12px 24px',
+                            border: 'none',
+                            borderBottom: activeTab === tab.id ? '2px solid #3b82f6' : '2px solid transparent',
+                            backgroundColor: 'transparent',
+                            color: activeTab === tab.id ? '#3b82f6' : '#64748b',
+                            fontWeight: activeTab === tab.id ? 700 : 500,
+                            cursor: 'pointer',
+                            fontSize: '0.95rem',
+                            transition: 'all 0.2s'
+                        }}
+                    >
+                        <tab.icon size={18} />
+                        {tab.label}
+                    </button>
+                ))}
+            </div>
+
+            {/* Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '24px' }}>
-                {announcements.length === 0 ? (
-                    <div style={{ gridColumn: '1 / -1', padding: '40px', textAlign: 'center', backgroundColor: '#f8fafc', borderRadius: '16px', color: '#64748b' }}>
-                        <p style={{ fontSize: '1.1rem', fontWeight: 500 }}>No announcements found</p>
-                        <p style={{ fontSize: '0.9rem' }}>You're all caught up!</p>
+                {filteredAnnouncements.length === 0 ? (
+                    <div style={{ gridColumn: '1 / -1', padding: '60px', textAlign: 'center', backgroundColor: '#f8fafc', borderRadius: '16px', color: '#64748b', border: '2px dashed #e2e8f0' }}>
+                        <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'center' }}>
+                            <AlertCircle size={48} color="#cbd5e1" />
+                        </div>
+                        <p style={{ fontSize: '1.2rem', fontWeight: 600, color: '#475569' }}>No {activeTab} announcements</p>
+                        <p style={{ fontSize: '0.95rem' }}>
+                            {activeTab === 'active' ? 'No events happening today.' :
+                                activeTab === 'upcoming' ? 'No upcoming events scheduled.' : 'No completed events found.'}
+                        </p>
                     </div>
                 ) : (
-                    announcements.map(event => (
+                    filteredAnnouncements.map(event => (
                         <div
                             key={event.id}
                             onClick={() => setSelectedEvent(event)}
@@ -315,7 +470,8 @@ const AnnouncementsPage = ({ userRole, userId }) => {
                                 flexDirection: 'column',
                                 gap: '16px',
                                 transition: 'all 0.2s',
-                                cursor: 'pointer'
+                                cursor: 'pointer',
+                                position: 'relative'
                             }}
                             onMouseEnter={(e) => {
                                 e.currentTarget.style.transform = 'translateY(-2px)';
@@ -326,28 +482,30 @@ const AnnouncementsPage = ({ userRole, userId }) => {
                                 e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)';
                             }}
                         >
+                            {/* Status Badge */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#1e293b', lineHeight: 1.4, wordBreak: 'break-word' }}>{event.title}</h3>
+                                <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#1e293b', lineHeight: 1.4, wordBreak: 'break-word', flex: 1, paddingRight: '8px' }}>{event.title}</h3>
                                 <span style={{
-                                    padding: '4px 12px',
-                                    backgroundColor: '#f1f5f9',
+                                    padding: '4px 10px',
                                     borderRadius: '20px',
-                                    fontSize: '0.75rem',
-                                    fontWeight: 600,
-                                    color: '#64748b',
-                                    whiteSpace: 'nowrap',
-                                    marginLeft: '12px'
+                                    fontSize: '0.7rem',
+                                    fontWeight: 700,
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.05em',
+                                    backgroundColor: activeTab === 'active' ? '#dcfce7' : activeTab === 'upcoming' ? '#e0f2fe' : '#f1f5f9',
+                                    color: activeTab === 'active' ? '#166534' : activeTab === 'upcoming' ? '#0369a1' : '#64748b',
+                                    whiteSpace: 'nowrap'
                                 }}>
-                                    {event.event_for === 'all'
-                                        ? 'All Employees'
-                                        : (event.event_for === 'team' ? 'Team Event' : 'Employee Event')}
+                                    {activeTab === 'active' ? 'Active' : activeTab === 'upcoming' ? 'Future' : 'Completed'}
                                 </span>
                             </div>
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '0.9rem' }}>
                                     <Calendar size={16} color="#3b82f6" />
-                                    <span style={{ fontWeight: 500, color: '#334155' }}>{new Date(event.event_date).toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                                    <span style={{ fontWeight: 500, color: '#334155' }}>
+                                        {new Date(event.event_date).toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'long', day: 'numeric' })}
+                                    </span>
                                 </div>
 
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '0.9rem' }}>
@@ -398,15 +556,15 @@ const AnnouncementsPage = ({ userRole, userId }) => {
                             position: 'relative',
                             overflow: 'hidden',
                             animation: 'slideUp 0.3s ease-out',
-                            maxHeight: '90vh', // Prevent overflow on small screens
+                            maxHeight: '90vh',
                             display: 'flex',
                             flexDirection: 'column'
                         }}
                     >
-                        {/* Modal Header with Color Band */}
+                        {/* Modal Header with Status Color Band */}
                         <div style={{
                             height: '16px',
-                            background: 'linear-gradient(to right, #3b82f6, #8b5cf6)',
+                            background: activeTab === 'active' ? '#22c55e' : activeTab === 'upcoming' ? '#3b82f6' : '#94a3b8',
                             width: '100%',
                             flexShrink: 0
                         }}></div>
@@ -417,18 +575,10 @@ const AnnouncementsPage = ({ userRole, userId }) => {
                                 <button
                                     onClick={() => setSelectedEvent(null)}
                                     style={{
-                                        background: '#f1f5f9',
-                                        border: 'none',
-                                        borderRadius: '50%',
-                                        width: '36px',
-                                        height: '36px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        cursor: 'pointer',
-                                        color: '#64748b',
-                                        flexShrink: 0,
-                                        marginLeft: '16px'
+                                        background: '#f1f5f9', border: 'none', borderRadius: '50%',
+                                        width: '36px', height: '36px',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        cursor: 'pointer', color: '#64748b', flexShrink: 0, marginLeft: '16px'
                                     }}
                                 >
                                     <X size={20} />
@@ -507,7 +657,24 @@ const AnnouncementsPage = ({ userRole, userId }) => {
                                 )}
                             </div>
 
-                            <div style={{ marginTop: '32px', display: 'flex', justifyContent: 'flex-end' }}>
+                            {/* Actions Footer */}
+                            <div style={{ marginTop: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '24px', borderTop: '1px solid #f1f5f9' }}>
+                                {/* Management Actions for Authorized Users */}
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    {canMarkCompleted && activeTab === 'active' && selectedEvent.status !== 'completed' && (
+                                        <button
+                                            onClick={(e) => handleUpdateStatus(e, selectedEvent.id, 'completed')}
+                                            style={{
+                                                padding: '8px 16px', borderRadius: '8px', border: '1px solid #f1f5f9',
+                                                backgroundColor: '#f8fafc', color: '#64748b', fontWeight: 600, fontSize: '0.85rem',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            Mark as Completed
+                                        </button>
+                                    )}
+                                </div>
+
                                 <button
                                     onClick={() => setSelectedEvent(null)}
                                     style={{

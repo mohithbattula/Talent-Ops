@@ -80,11 +80,10 @@ const Header = () => {
                 });
             }
 
-            // 2. Search My Tasks (Manager's Tasks)
+            // 2. Search All Tasks
             const { data: tasks } = await supabase
                 .from('tasks')
                 .select('id, title, status')
-                .eq('assigned_to', user.id)
                 .ilike('title', `%${query}%`)
                 .limit(5);
 

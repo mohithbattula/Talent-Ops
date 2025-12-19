@@ -1,5 +1,5 @@
 import React from 'react';
-import { MoreHorizontal, ArrowUpDown, Filter, Download } from 'lucide-react';
+import { MoreHorizontal, ArrowUpDown, Search } from 'lucide-react';
 
 const DataTable = ({ columns, data, title, onAction }) => {
     return (
@@ -16,7 +16,7 @@ const DataTable = ({ columns, data, title, onAction }) => {
                 <h3 style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>{title}</h3>
                 <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
                     <button
-                        onClick={() => onAction('Filter')}
+                        onClick={() => onAction('Search')}
                         style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -28,23 +28,9 @@ const DataTable = ({ columns, data, title, onAction }) => {
                             fontWeight: 500
                         }}
                     >
-                        <Filter size={16} /> Filter
+                        <Search size={16} /> Search
                     </button>
-                    <button
-                        onClick={() => onAction('Export')}
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            padding: '8px 12px',
-                            borderRadius: '8px',
-                            border: '1px solid var(--border)',
-                            fontSize: '0.875rem',
-                            fontWeight: 500
-                        }}
-                    >
-                        <Download size={16} /> Export
-                    </button>
+
                 </div>
             </div>
 

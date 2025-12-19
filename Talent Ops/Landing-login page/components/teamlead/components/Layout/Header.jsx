@@ -60,16 +60,50 @@ const Header = () => {
                 });
             }
 
-            // 2. Search My Tasks
-            const { data: tasks } = await supabase
-                .from('tasks')
-                .select('id, title, status')
-                .eq('assigned_to', user.id)
-                .ilike('title', `%${query}%`)
-                .limit(5);
+            // 2. Search Team Tasks (Team Lead's tasks + Team members' tasks)
+            // First, get the team lead's profile to find their team_id
+            const { data: teamLeadProfile } = await supabase
+                .from('profiles')
+                .select('team_id')
+                .eq('id', user.id)
+                .single();
 
-            if (tasks) {
-                tasks.forEach(t => {
+            let taskResults = [];
+
+            if (teamLeadProfile?.team_id) {
+                // Get all team members (including team lead)
+                const { data: teamMembers } = await supabase
+                    .from('profiles')
+                    .select('id')
+                    .eq('team_id', teamLeadProfile.team_id);
+
+                if (teamMembers && teamMembers.length > 0) {
+                    const teamMemberIds = teamMembers.map(m => m.id);
+
+                    // Search tasks assigned to any team member
+                    const { data: tasks } = await supabase
+                        .from('tasks')
+                        .select('id, title, status')
+                        .in('assigned_to', teamMemberIds)
+                        .ilike('title', `%${query}%`)
+                        .limit(5);
+
+                    taskResults = tasks || [];
+                }
+            } else {
+                // Fallback: If no team, just show team lead's own tasks
+                const { data: tasks } = await supabase
+                    .from('tasks')
+                    .select('id, title, status')
+                    .eq('assigned_to', user.id)
+                    .ilike('title', `%${query}%`)
+                    .limit(5);
+
+                taskResults = tasks || [];
+            }
+
+            if (taskResults.length > 0) {
+                taskResults.forEach(t => {
                     results.push({
                         id: `task-${t.id}`,
                         type: 'Task',

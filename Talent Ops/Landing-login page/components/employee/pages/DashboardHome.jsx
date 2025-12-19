@@ -144,12 +144,30 @@ const DashboardHome = () => {
                             title: a.title,
                             location: a.location,
                             color: '#e0f2fe',
-                            date: a.event_date
+                            date: a.event_date,
+                            status: a.status, // Pass status
+                            type: 'announcement'
                         }));
                         combinedEvents = [...combinedEvents, ...announcementEvents];
                     }
 
-                    combinedEvents.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+                    // Sort by priority: Active > Future > Completed, then by time within each group
+                    combinedEvents.sort((a, b) => {
+                        // Determine status priority (Active=1, Future=2, Completed=3)
+                        const getStatusPriority = (event) => {
+                            if (event.type !== 'announcement') return 0; // Non-announcements first
+                            const status = event.status || ((event.date === formatDate(new Date())) ? 'active' : (new Date(event.date) < new Date().setHours(0, 0, 0, 0) ? 'completed' : 'future'));
+                            if (status === 'active') return 1;
+                            if (status === 'future') return 2;
+                            return 3; // completed
+                        };
+
+                        const priorityA = getStatusPriority(a);
+                        const priorityB = getStatusPriority(b);
+
+                        if (priorityA !== priorityB) return priorityA - priorityB;
+                        return (a.time || '').localeCompare(b.time || '');
+                    });
                     setTimeline(combinedEvents);
                 }
             } catch (error) {
@@ -514,7 +532,15 @@ const DashboardHome = () => {
                                 filteredTimeline.map((event) => (
                                     <div
                                         key={event.id}
-                                        onClick={() => navigate('/employee-dashboard/tasks', { state: { taskId: event.id } })}
+                                        onClick={() => {
+                                            if (event.title?.startsWith('Task:')) {
+                                                navigate('/employee-dashboard/tasks');
+                                            } else if (event.type === 'announcement') {
+                                                navigate('/employee-dashboard/announcements');
+                                            } else {
+                                                navigate('/employee-dashboard/tasks');
+                                            }
+                                        }}
                                         style={{
                                             display: 'flex',
                                             gap: '32px',
@@ -569,6 +595,20 @@ const DashboardHome = () => {
                                                     <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: event.color === '#dbeafe' ? '#3b82f6' : '#10b981' }}></div>
                                                     <p style={{ fontSize: '0.85rem', color: '#64748b' }}>{event.location}</p>
                                                 </div>
+                                                {event.type === 'announcement' && (
+                                                    <span style={{
+                                                        fontSize: '0.65rem',
+                                                        fontWeight: 'bold',
+                                                        textTransform: 'uppercase',
+                                                        padding: '2px 6px',
+                                                        borderRadius: '8px',
+                                                        marginLeft: '8px',
+                                                        backgroundColor: (event.status === 'completed' || new Date(event.date) < new Date().setHours(0, 0, 0, 0)) ? '#f1f5f9' : (event.status === 'active' || event.date === formatDate(new Date())) ? '#dcfce7' : '#e0f2fe',
+                                                        color: (event.status === 'completed' || new Date(event.date) < new Date().setHours(0, 0, 0, 0)) ? '#64748b' : (event.status === 'active' || event.date === formatDate(new Date())) ? '#166534' : '#0369a1'
+                                                    }}>
+                                                        {(event.status === 'completed' || new Date(event.date) < new Date().setHours(0, 0, 0, 0)) ? 'Completed' : (event.status === 'active' || event.date === formatDate(new Date())) ? 'Active' : 'Future'}
+                                                    </span>
+                                                )}
                                             </div>
                                             <ChevronRight size={18} color="#cbd5e1" />
                                         </div>
