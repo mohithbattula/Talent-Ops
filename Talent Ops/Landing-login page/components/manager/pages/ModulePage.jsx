@@ -232,6 +232,7 @@ const ModulePage = ({ title, type }) => {
                                     employee_id: leave.employee_id, // Added for refund logic
                                     name: name,
                                     type: type,
+                                    reason: leave.reason || 'No reason provided', // Include full reason from DB
                                     startDate: leave.from_date, // Added for calculation
                                     endDate: leave.to_date, // Added for calculation
                                     duration: `${diffDays} Days`,
@@ -1647,6 +1648,10 @@ const ModulePage = ({ title, type }) => {
                                     }}>
                                         {selectedLeaveRequest.status}
                                     </span>
+                                </div>
+                                <div style={{ gridColumn: '1 / -1' }}>
+                                    <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>Reason</p>
+                                    <p style={{ fontSize: '1rem', fontWeight: 600, lineHeight: '1.5' }}>{selectedLeaveRequest.reason}</p>
                                 </div>
                             </div>
                         </div>

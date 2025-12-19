@@ -85,6 +85,7 @@ const ModulePage = ({ title, type }) => {
                         employee_id: leave.employee_id,
                         name: userName, // Use context userName or fallback
                         type: type,
+                        reason: leave.reason || 'No reason provided', // Include full reason from DB
                         startDate: leave.from_date,
                         endDate: leave.to_date,
                         duration: diffDays === 1 ? '1 Day' : `${diffDays} Days`,
@@ -614,6 +615,7 @@ const ModulePage = ({ title, type }) => {
                         employee_id: leave.employee_id,
                         name: userName,
                         type: type,
+                        reason: leave.reason || 'No reason provided', // Include full reason from DB
                         startDate: leave.from_date,
                         endDate: leave.to_date,
                         duration: diffDays === 1 ? '1 Day' : `${diffDays} Days`,
@@ -1316,6 +1318,10 @@ const ModulePage = ({ title, type }) => {
                                     }}>
                                         {selectedLeaveRequest.status}
                                     </span>
+                                </div>
+                                <div style={{ gridColumn: '1 / -1' }}>
+                                    <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>Reason</p>
+                                    <p style={{ fontSize: '1rem', fontWeight: 600, lineHeight: '1.5' }}>{selectedLeaveRequest.reason}</p>
                                 </div>
                             </div>
                         </div>

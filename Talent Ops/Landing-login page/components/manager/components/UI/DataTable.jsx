@@ -1,11 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { ArrowUpDown, Filter, Download, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowUpDown, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const DataTable = ({ columns, data, title, onAction }) => {
     const [currentPage, setCurrentPage] = useState(1);
     const [searchTerm, setSearchTerm] = useState('');
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
-    const [showFilter, setShowFilter] = useState(false);
+    const [showSearch, setShowSearch] = useState(false);
     const itemsPerPage = 10;
 
     // Filtering
@@ -67,7 +67,7 @@ const DataTable = ({ columns, data, title, onAction }) => {
                 <h3 style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>{title}</h3>
                 <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
                     <button
-                        onClick={() => setShowFilter(!showFilter)}
+                        onClick={() => setShowSearch(!showSearch)}
                         style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -77,34 +77,19 @@ const DataTable = ({ columns, data, title, onAction }) => {
                             border: '1px solid var(--border)',
                             fontSize: '0.875rem',
                             fontWeight: 500,
-                            backgroundColor: showFilter ? 'var(--accent)' : 'transparent',
-                            color: showFilter ? 'white' : 'inherit',
+                            backgroundColor: showSearch ? 'var(--accent)' : 'transparent',
+                            color: showSearch ? 'white' : 'inherit',
                             cursor: 'pointer'
                         }}
                     >
-                        <Filter size={16} /> Filter
+                        <Search size={16} /> Search
                     </button>
-                    <button
-                        onClick={() => onAction && onAction('Export')}
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            padding: '8px 12px',
-                            borderRadius: '8px',
-                            border: '1px solid var(--border)',
-                            fontSize: '0.875rem',
-                            fontWeight: 500,
-                            cursor: 'pointer'
-                        }}
-                    >
-                        <Download size={16} /> Export
-                    </button>
+
                 </div>
             </div>
 
-            {/* Filter Input */}
-            {showFilter && (
+            {/* Search Input */}
+            {showSearch && (
                 <div style={{ marginBottom: 'var(--spacing-sm)' }}>
                     <input
                         type="text"
